@@ -24,7 +24,9 @@ LDX #$00
 STX $02AB
 STX $02AC
 
-JSR startRandomizer
+LDA #$00
+STA $D020
+STA $D021
 
 JSR clearScreen
 
@@ -44,13 +46,18 @@ mainLoop:
   JMP mainLoop
 
 clearScreen:
-  LDA #$20
   LDX #$FF
 clearScreenLoop:
+  LDA #$20
   STA $0400, X
   STA $0500, X
   STA $0600, X
-  STA $0700, X  
+  STA $0700, X
+  LDA #$05
+  STA $D800, X 
+  STA $D900, X 
+  STA $DA00, X
+  STA $DB00, X
   DEX
   BNE clearScreenLoop
   RTS
@@ -200,11 +207,9 @@ rollSnake:
 makeFood:
   LDA $02AC
   BNE foodDone
-  LDA $D41B ; random number
-  AND #25
+  JSR rnd
   TAX
-  LDA $D41B
-  AND #40
+  JSR rnd
   TAY
   LDA #$51
   JSR plotChar
@@ -233,6 +238,7 @@ checkFoodCollision:
   JSR saveSnake
   JSR undrawTail
   JSR doMoveSnake
+  JSR drawHead
   LDX $02AC
   DEX 
   STX $02AC ; there is now less food
@@ -256,6 +262,13 @@ startRandomizer:
   STA $D40F ; voice 3 frequency high byte
   LDA #$80  ; noise waveform, gate bit off
   STA $D412 ; voice 3 control register  
+  RTS
+
+rnd:
+  JSR startRandomizer
+  LDA $D41B ; random number
+  AND #$0F
+  BEQ rnd
   RTS
   
 ;* = $c000
