@@ -12,39 +12,93 @@
 ;create BASIC startup (SYS line)
 !basic
 
-LDX #$01
-STX $02A7
-LDX #$01
-STX $02A8
-LDX #$14
-LDY #$10
-JSR saveSnake
 
-LDX #$00
-STX $02AB
-STX $02AC
 
-LDA #$00
-STA $D020
-STA $D021
+startScreen:
+  JSR clearScreen
+  LDY #$00 ; char pointer
+  LDX #$08 ; row
+titleMessage:
+  TYA ; copy y to a so we can modify it
+  PHA ; save the index because we'll need it for the next time round
+  ADC #$10 ; shift positin along so we write in the middle
+  TAY ; put back in y so we can use for col
+  JSR $FFF0 ; call PLOT
+  PLA ; grab the index back off the stack
+  TAY ; stick the index back in y so we can read the right char
+  LDA titleText,y      ; read characters from line1 table of text...
+  JSR $FFD2
+  INY 
+  CPY #$09         ; finished when all 40 cols of a line are processed
+  BNE titleMessage    ; loop if we are not done yet
 
-JSR clearScreen
+waitToStart:
+  LDX $D020
+  INX
+  STX $D020
+  
 
+  LDA $DC00
+  AND #$10
+  BNE waitToStart
+  JSR clearScreen  
+  JSR initGame
 
 mainLoop:
-  ; check joystick
   JSR joystick
-  ; move snake
   JSR undrawTail
   JSR moveSnake
-  JSR getCharUnderHead
-  JSR checkFoodCollision
-  ; check death
   JSR drawHead
   
   JSR makeFood
   JMP mainLoop
 
+dead:
+  JSR clearScreen
+  LDY #$00 ; char pointer
+  LDX #$08 ; row
+deadMessage:
+  TYA ; copy y to a so we can modify it
+  PHA ; save the index because we'll need it for the next time round
+  ADC #$10 ; shift positin along so we write in the middle
+  TAY ; put back in y so we can use for col
+  JSR $FFF0 ; call PLOT
+  PLA ; grab the index back off the stack
+  TAY ; stick the index back in y so we can read the right char
+  LDA deathText,y      ; read characters from line1 table of text...
+  JSR $FFD2
+  INY 
+  CPY #$08         ; finished
+  BNE deadMessage    ; loop if we are not done yet  
+waitToRestart:
+  LDX $D020
+  INX
+  STX $D020
+  
+
+  LDA $DC00
+  AND #$10
+  BNE waitToRestart
+  JMP startScreen 
+  
+initGame:
+  LDX #$01
+  STX $02A7
+  LDX #$01
+  STX $02A8
+  LDX #$14
+  LDY #$10
+  JSR saveSnake
+
+  LDX #$00
+  STX $02AB
+  STX $02AC
+
+  LDA #$00
+  STA $D020
+  STA $D021
+
+  
 clearScreen:
   LDX #$FF
 clearScreenLoop:
@@ -60,6 +114,17 @@ clearScreenLoop:
   STA $DB00, X
   DEX
   BNE clearScreenLoop
+  ; because the loop above stops when it gets to zero but doesn't actually run for zero
+  LDA #$20
+  STA $0400
+  STA $0500
+  STA $0600
+  STA $0700
+  LDA #$05
+  STA $D800 
+  STA $D900 
+  STA $DA00
+  STA $DB00
   RTS
   
 joystick:
@@ -118,6 +183,8 @@ doMoveSnake:
   BNE moveSnakeRight
 moveSnakeDone:  
   JSR saveSnake 
+  JSR checkDeath
+  JSR checkFoodCollision
   RTS
 moveSnakeUp:
   DEX
@@ -211,6 +278,16 @@ makeFood:
   TAX
   JSR rnd
   TAY
+  
+  ; make sure we're not inside the snake
+  LDA ScreenRowTableDataL, x
+  STA $80
+  LDA ScreenRowTableDataH, x
+  STA $81
+  LDA ($80), y
+  CMP #$A0
+  BEQ makeFood ; insdie the snake - try again
+  
   LDA #$51
   JSR plotChar
   LDA #01
@@ -226,8 +303,9 @@ getCharUnderHead:
   LDA ScreenRowTableDataH, x
   STA $81
   LDA ($80), y
-  
+  RTS
 checkFoodCollision:
+  JSR getCharUnderHead
   CMP #$51
   BNE foodCollisionChecked
   TXA
@@ -237,13 +315,20 @@ checkFoodCollision:
   TAX
   JSR saveSnake
   JSR undrawTail
-  JSR doMoveSnake
   JSR drawHead
   LDX $02AC
   DEX 
   STX $02AC ; there is now less food
 foodCollisionChecked:
   RTS  
+
+checkDeath:
+  JSR getCharUnderHead
+  CMP #$A0
+  BNE deathChecked
+  JMP dead
+deathChecked:  
+  RTS
   
 plotChar:
   PHA ; A onto stack
@@ -271,8 +356,13 @@ rnd:
   BEQ rnd
   RTS
   
+  
 ;* = $c000
 ;========================================================
+titleText:
+!text "S N A K E"
+deathText:
+!text "d e a d"
 ScreenRowTableDataL:
 !byte $00
 !byte $28
